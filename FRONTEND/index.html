@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartCode Tutor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.294.0/dist/umd/lucide.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap inner">
+    <div class="brand"><span class="mark">&lt;/&gt;</span>SmartCode Tutor</div>
+    <div class="nav-links">
+      <button class="nav-btn active" data-target="home">Home</button>
+      <button class="nav-btn" data-target="workspace">Translator</button>
+      <div class="auth-actions">
+        <button class="nav-cta" id="authTrigger">Login</button>
+        <button class="nav-cta nav-signup" id="signupTrigger">Sign up</button>
+        <button class="nav-cta nav-profile hidden" id="profileTrigger" data-target="profile-page">My Profile</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= HOME ================= -->
+<section id="home" class="view active">
+  <div class="wrap">
+    <div class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow-row"><span class="dot"></span>Built for students learning a second language, syntax first</div>
+          <h1 class="headline">Learn what your code<br>becomes<span class="accent">.</span></h1>
+          <p class="sub">SmartCode Tutor converts between Java, C++, C, and Python one line at a time, showing the reasoning behind every change instead of a black-box output.</p>
+          <div class="cta-row">
+            <button class="btn btn-primary" data-target="workspace"><span>Open the translator</span></button>
+            <a class="btn btn-ghost" href="#pipeline">See how it works</a>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <div class="hero-panel-head">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div class="file mono">Translation.java → out.py</div>
+          </div>
+          <div class="hero-split">
+            <div class="hero-pane">
+              <span class="tag mono">Java</span>
+              <pre class="mono">int age = 20;
+if (age &gt;= 18) {
+  System.out.println("Eligible");
+}</pre>
+            </div>
+            <div class="hero-pane">
+              <span class="tag mono">Python</span>
+              <pre class="mono">age = 20
+if age &gt;= 18:
+    print("Eligible")</pre>
+            </div>
+          </div>
+          <div class="hero-note">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            Braces become indentation, and the type declaration is dropped — Python infers it at assignment.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="pipeline">
+      <div class="section-head">
+        <h2>One request, five stages</h2>
+        <p>Every translation runs through the same pipeline, so the output is predictable and each step stays easy to reason about on its own.</p>
+      </div>
+      <div class="pipeline">
+        <div class="pstep"><div class="num">01</div><h4>Frontend</h4><p>Source code, source language, and target language are packaged into a request.</p></div>
+        <div class="pstep"><div class="num">02</div><h4>Validator</h4><p>Flags constructs outside the supported scope before anything is translated.</p></div>
+        <div class="pstep"><div class="num">03</div><h4>Parser</h4><p>Breaks valid code into a structured, language-neutral representation.</p></div>
+        <div class="pstep"><div class="num">04</div><h4>Translation engine</h4><p>Generates target-language syntax from the structured representation.</p></div>
+        <div class="pstep"><div class="num">05</div><h4>Explanation generator</h4><p>Attaches a plain-language note to each changed line before returning the result.</p></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>What it actually does</h2>
+        <p>No ambition to be a full compiler — just a dependable translator for the constructs students hit first.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="fcard">
+          <div class="ficon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+          <h3>Rule-based translation</h3>
+          <p>A controlled engine covering six core constructs — variables, input/output, conditions, loops, functions, and arrays — built for accuracy over coverage.</p>
+        </div>
+        <div class="fcard">
+          <div class="ficon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <h3>Line-by-line explanations</h3>
+          <p>Every converted statement carries a short note on what changed and why, so the target syntax actually clicks.</p>
+        </div>
+        <div class="fcard">
+          <div class="ficon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <h3>Scope validation</h3>
+          <p>Constructs like exception handling are caught up front, with a plain warning instead of a broken or misleading result.</p>
+        </div>
+        <div class="fcard">
+          <div class="ficon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg></div>
+          <h3>Side-by-side comparison</h3>
+          <p>Source and translated code sit in parallel panes, so you can trace any statement across both languages at a glance.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" style="padding-top:0;border-top:none;">
+      <div class="cta-band">
+        <div>
+          <h3>Try it on your own snippet</h3>
+          <p>Paste a short program and translate it between Java, C++, C, and Python with explanations for every converted statement.</p>
+        </div>
+        <button class="btn btn-primary" data-target="workspace">Open the translator</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="wrap" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;width:100%;">
+      <span>SmartCode Tutor — a college project on rule-based code translation.</span>
+      <span class="mono">Java · C++ · C · Python</span>
+    </div>
+  </footer>
+</section>
+
+<!-- ================= PROFILE PAGE ================= -->
+<section id="profile-page" class="view">
+  <div class="wrap profile-page-shell">
+    <div class="profile-page-head">
+      <span class="profile-page-badge" id="profilePageBadge">A</span>
+      <div>
+        <div class="profile-page-kicker">Signed in</div>
+        <h2 id="profilePageName">Aisha</h2>
+      </div>
+    </div>
+
+    <div class="profile-summary-grid">
+      <div class="profile-card">
+        <div class="profile-card-label">Name</div>
+        <div class="profile-card-value" id="profilePageDetailName">Aisha</div>
+      </div>
+      <div class="profile-card">
+        <div class="profile-card-label">Email ID</div>
+        <div class="profile-card-value" id="profilePageDetailEmail">aisha@example.com</div>
+      </div>
+      <div class="profile-card wide">
+        <div class="profile-card-label">Translation History</div>
+        <ul class="history-list" id="profileHistoryList">
+          <li class="empty-history">No translations yet.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="profile-page-actions">
+      <button class="btn btn-primary profile-logout-btn" id="pageLogoutTrigger">Logout</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WORKSPACE ================= -->
+<section id="workspace" class="view">
+  <div class="wrap ws-shell">
+    <div class="ws-head">
+      <div>
+        <h2>Translator workspace</h2>
+          <p>Translate common code patterns between Java, C++, C, and Python directly in your browser.</p>
+      </div>
+    </div>
+
+    <div class="ws-bar">
+      <div class="lang-group">
+        <label>Source</label>
+        <select class="langsel mono" id="srcLang">
+          <option value="Java">Java</option>
+          <option value="C++">C++</option>
+          <option value="C">C</option>
+          <option value="Python">Python</option>
+        </select>
+      </div>
+      <button class="swap-btn" id="swapBtn" title="Swap source and target languages">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      </button>
+      <div class="lang-group">
+        <label>Target</label>
+        <select class="langsel mono" id="tgtLang">
+          <option value="Python">Python</option>
+          <option value="Java">Java</option>
+          <option value="C++">C++</option>
+          <option value="C">C</option>
+        </select>
+      </div>
+      <div class="spacer"></div>
+      <button class="translate-btn" id="translateBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span id="translateLabel">Translate</span>
+      </button>
+    </div>
+
+    <div class="editors">
+      <div class="pane">
+        <div class="pane-head">
+          <div class="pane-title"><span class="tag">SOURCE</span><span id="sourceLanguageLabel">Java</span></div>
+          <div class="pane-actions">
+            <button class="icon-btn" id="clearBtn" title="Clear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+          </div>
+        </div>
+        <textarea id="srcCode" spellcheck="false"></textarea>
+      </div>
+
+      <div class="pane">
+        <div class="pane-head">
+          <div class="pane-title"><span class="tag">TRANSLATED</span><span id="targetLanguageLabel">Python</span></div>
+          <div class="pane-actions">
+            <button class="icon-btn" id="copyBtn" title="Copy"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="icon-btn" id="downloadBtn" title="Download"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+          </div>
+        </div>
+        <div class="pane-body" id="targetBody">
+          <div class="empty-target">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>Translated code will appear here</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="explain-wrap">
+      <div class="explain-tabs">
+        <button class="etab active" data-tab="explain">Explanation</button>
+        <button class="etab" data-tab="warn">Warnings <span id="warnCount"></span></button>
+      </div>
+      <div class="explain-panel" id="explainPanel">
+        <div class="exp-empty">Run a translation to see line-by-line notes here.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="modal-overlay" id="authOverlay">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="authHeading">Sign in</h3>
+      <button class="modal-close" id="authClose"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-mode="in">Sign in</button>
+      <button class="auth-tab" data-mode="up">Sign up</button>
+    </div>
+    <form class="auth-form" id="authForm">
+      <div class="field" id="nameField" style="display:none;">
+        <label>Name</label>
+        <input type="text" id="authName" placeholder="Your name" autocomplete="name">
+      </div>
+      <div class="field">
+        <label>Email</label>
+      <input type="text" id="authEmail" placeholder="Username or email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="authPass" placeholder="At least 6 characters" autocomplete="current-password" required>
+      </div>
+      <span class="auth-error" id="authError">Enter an email and a 6+ character password.</span>
+      <button type="submit" class="auth-submit" id="authSubmit">Sign in</button>
+      <div class="auth-note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        Your account and translation history are handled by the SmartCode Tutor Spring Boot backend.
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span id="toastMsg"></span></div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,1008 @@
+
+package com.smartcode.tutor.service;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.springframework.stereotype.Service;
+
+import com.smartcode.tutor.dto.CodeTranslationRequest;
+import com.smartcode.tutor.dto.CodeTranslationResponse;
+
+@Service
+public class CodeTranslationService {
+
+    private static final String ID = "[A-Za-z_][A-Za-z0-9_]*";
+
+    private static final Pattern DECLARATION = Pattern.compile(
+            "^(int|double|float|long|short|boolean|bool|char|String|string)\\s+"
+                    + "(" + ID + ")\\s*=\\s*(.+);?$");
+
+    public CodeTranslationResponse translate(CodeTranslationRequest request) {
+        String source = normalize(request.getSourceLanguage());
+        String target = normalize(request.getTargetLanguage());
+        String code = request.getCode();
+
+        List<String> output = new ArrayList<>();
+        List<String> explanations = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<Integer> pythonBlocks = new ArrayList<>();
+
+        Set<String> declaredVariables = new HashSet<>();
+        int targetDepth = 0;
+
+        if (source.equals(target)) {
+            return new CodeTranslationResponse(
+                    display(source),
+                    display(target),
+                    code,
+                    code,
+                    List.of("Source and target languages are identical; code was preserved."),
+                    warnings,
+                    true,
+                    "No translation was needed.");
+        }
+
+        String[] lines = code.split("\\R", -1);
+
+        for (int i = 0; i < lines.length; i++) {
+            String raw = lines[i];
+            String line = raw.trim();
+
+            if (line.isEmpty()) {
+                output.add("");
+                continue;
+            }
+
+            int sourceIndent = leadingSpaces(raw);
+            if (source.equals("java")
+                    && (target.equals("python")
+                    || target.equals("c")
+                    || target.equals("cpp"))) {
+                if (line.matches("^(public\\s+)?class\\s+" + ID
+                        + "(\\s+extends\\s+" + ID + ")?\\s*\\{?$")) {
+                    continue;
+                }
+
+                if (line.matches(
+                        "^public\\s+static\\s+void\\s+main\\s*\\(.*\\)\\s*\\{?$")) {
+                    continue;
+                }
+            }
+
+
+            if (source.equals("python") && !target.equals("python")) {
+                if (isElse(line) || isElif(line)) {
+                    if (!pythonBlocks.isEmpty()
+                            && sourceIndent
+                            == pythonBlocks.get(pythonBlocks.size() - 1)) {
+
+                        pythonBlocks.remove(pythonBlocks.size() - 1);
+                        targetDepth = Math.max(0, targetDepth - 1);
+
+                        String translatedElse;
+
+                        if (isElse(line)) {
+                            translatedElse = "} else {";
+                        } else {
+                            String expression = conditionText(
+                                    line.substring(5, line.length() - 1),
+                                    target);
+
+                            translatedElse = "} else if (" + expression + ") {";
+                        }
+
+                        output.add(translatedElse);
+                        targetDepth++;
+                        pythonBlocks.add(sourceIndent);
+
+                        explanations.add(
+                                explain(line, translatedElse, i + 1));
+                        continue;
+                    }
+                }
+
+                while (!pythonBlocks.isEmpty()
+                        && sourceIndent
+                        <= pythonBlocks.get(pythonBlocks.size() - 1)) {
+
+                    pythonBlocks.remove(pythonBlocks.size() - 1);
+                    targetDepth = Math.max(0, targetDepth - 1);
+                    output.add("}");
+                }
+            }
+
+            if (line.equals("}")
+                    && source.equals("java")
+                    && (target.equals("c") || target.equals("cpp"))
+                    && sourceIndent <= 4) {
+                continue;
+            }
+
+            if (line.equals("}")) {
+                if (target.equals("python")) {
+                    targetDepth = Math.max(0, targetDepth - 1);
+                } else {
+                    output.add("}");
+                }
+                continue;
+            }
+
+            if (line.matches("^}\\s*else\\s*\\{?$")) {
+                targetDepth = Math.max(0, targetDepth - 1);
+
+                output.add(indent(target, targetDepth)
+                        + (target.equals("python") ? "else:" : "} else {"));
+
+                targetDepth++;
+                continue;
+            }
+
+            if (line.equals("{")) {
+                if (!target.equals("python")) {
+                    output.add("{");
+                }
+                continue;
+            }
+
+            if (line.equals("else") || line.equals("else {")) {
+                output.add(indent(target, targetDepth)
+                        + (target.equals("python") ? "else:" : "else {"));
+
+                targetDepth++;
+                continue;
+            }
+
+            String translated = translateLine(
+                    line, source, target, declaredVariables);
+
+            if (translated == null) {
+                output.add(indent(target, targetDepth) + line);
+                warnings.add("Line " + (i + 1)
+                        + ": Unsupported construct; original line preserved.");
+                continue;
+            }
+
+            output.add(indent(target, targetDepth) + translated);
+            explanations.add(explain(line, translated, i + 1));
+
+            if (startsBlock(translated, target)) {
+                targetDepth++;
+
+                if (source.equals("python") && !target.equals("python")) {
+                    pythonBlocks.add(sourceIndent);
+                }
+            }
+        }
+
+        if (source.equals("python") && !target.equals("python")) {
+            while (!pythonBlocks.isEmpty()) {
+                pythonBlocks.remove(pythonBlocks.size() - 1);
+                targetDepth = Math.max(0, targetDepth - 1);
+                output.add("}");
+            }
+        }
+
+        boolean success = warnings.isEmpty();
+
+        return new CodeTranslationResponse(
+                display(source),
+                display(target),
+                code,
+                String.join("\n", output),
+                explanations,
+                warnings,
+                success,
+                success
+                        ? "Translation completed for the supported subset. Review the output before running it."
+                        : "Translation completed with warnings. Unsupported lines were preserved for review."
+        );
+    }
+
+    private String translateLine(
+            String line,
+            String source,
+            String target,
+            Set<String> declaredVariables) {
+
+        // Comments.
+        if (line.startsWith("//") || line.startsWith("#")) {
+            String comment = line.replaceFirst("^(//|#)\\s*", "");
+            return target.equals("python") ? "# " + comment : "// " + comment;
+        }
+
+        // C-family function definition -> Python.
+        Matcher function = Pattern.compile(
+                "^(?:(?:public|private|protected|static|inline|extern)\\s+)*"
+                        + "(void|int|double|float|long|boolean|bool|char|String|string)"
+                        + "\\s+(" + ID + ")\\s*\\((.*)\\)\\s*\\{?$"
+        ).matcher(line);
+
+        if (function.matches() && target.equals("python")
+                && !source.equals("python")) {
+
+            String parameters = parametersToPython(function.group(3));
+            if (parameters == null) {
+                return null;
+            }
+
+            return "def " + function.group(2) + "(" + parameters + "):";
+        }
+
+        // Python function -> C-family.
+        Matcher pyFunction = Pattern.compile(
+                "^def\\s+(" + ID + ")\\s*\\((.*)\\)\\s*:$"
+        ).matcher(line);
+
+        if (pyFunction.matches() && source.equals("python")
+                && !target.equals("python")) {
+
+            String parameters = parametersFromPython(pyFunction.group(2));
+            if (parameters == null) {
+                return null;
+            }
+
+            return "int " + pyFunction.group(1)
+                    + "(" + parameters + ") {";
+        }
+
+        // Return statements.
+        Matcher ret = Pattern.compile("^return(?:\\s+(.+?))?;?$").matcher(line);
+
+        if (ret.matches()) {
+            String returnValue = ret.group(1);
+
+            if (returnValue == null) {
+                return target.equals("python") ? "return" : "return;";
+            }
+
+            returnValue = removeSemicolon(returnValue.trim());
+
+            // FIX: Convert standalone Python boolean literals to Java literals.
+            returnValue = normalizeBooleanLiteral(returnValue, source, target);
+
+            return "return " + returnValue
+                    + (target.equals("python") ? "" : ";");
+        }
+
+        // Python if / elif / while.
+        Matcher pyCondition = Pattern.compile(
+                "^(if|elif|while)\\s+(.+):$"
+        ).matcher(line);
+
+        if (pyCondition.matches() && source.equals("python")) {
+            String keyword = pyCondition.group(1);
+            String expression = conditionText(pyCondition.group(2), target);
+
+            if (target.equals("python")) {
+                return line;
+            }
+
+            String targetKeyword = keyword.equals("elif") ? "else if" : keyword;
+            return targetKeyword + " (" + expression + ") {";
+        }
+
+        // C-family if / else-if / while -> Python or C-family.
+        Matcher condition = Pattern.compile(
+                "^(if|else\\s+if|while)\\s*\\((.*)\\)\\s*\\{?$"
+        ).matcher(line);
+
+        if (condition.matches()) {
+            String keyword = condition.group(1);
+            String expression = conditionText(condition.group(2), target);
+
+            if (target.equals("python")) {
+                return (keyword.equals("else if") ? "elif" : keyword)
+                        + " " + expression + ":";
+            }
+
+            return keyword + " (" + expression + ") {";
+        }
+
+        // Preserve numeric C-family for-loops when converting to C/C++.
+        Matcher nativeForLoop = Pattern.compile(
+                "^for\\s*\\(\\s*(?:(?:int|long|short)\\s+)?(" + ID + ")\\s*=\\s*(-?\\d+)\\s*;"
+                        + "\\s*\\1\\s*(<|<=|>|>=)\\s*(-?\\d+)\\s*;"
+                        + "\\s*\\1\\s*(\\+\\+|--|\\+=\\s*\\d+|-=\\s*\\d+)\\s*\\)\\s*\\{?$"
+        ).matcher(line);
+
+        if (nativeForLoop.matches()
+                && !source.equals("python")
+                && (target.equals("c") || target.equals("cpp"))) {
+            declaredVariables.add(nativeForLoop.group(1));
+            return line;
+        }
+        // Numeric C-family for-loop -> Python.
+        Matcher forLoop = Pattern.compile(
+                "^for\\s*\\(\\s*(?:(?:int|long|short)\\s+)?(" + ID + ")\\s*=\\s*(-?\\d+)\\s*;"
+                        + "\\s*\\1\\s*(<|<=|>|>=)\\s*(-?\\d+)\\s*;"
+                        + "\\s*\\1\\s*(\\+\\+|--|\\+=\\s*\\d+|-=\\s*\\d+)\\s*\\)\\s*\\{?$"
+        ).matcher(line);
+
+        if (forLoop.matches() && target.equals("python")
+                && !source.equals("python")) {
+            return forToPython(forLoop);
+        }
+
+        // Python numeric range -> C-family.
+        Matcher pyFor = Pattern.compile(
+                "^for\\s+(" + ID + ")\\s+in\\s+range\\((.*)\\):$"
+        ).matcher(line);
+
+        if (pyFor.matches() && source.equals("python")
+                && !target.equals("python")) {
+
+            String[] args = pyFor.group(2).split("\\s*,\\s*");
+            String variable = pyFor.group(1);
+
+            int start = 0;
+            int stop;
+            int step = 1;
+
+            try {
+                if (args.length == 1) {
+                    stop = Integer.parseInt(args[0]);
+                } else if (args.length == 2) {
+                    start = Integer.parseInt(args[0]);
+                    stop = Integer.parseInt(args[1]);
+                } else if (args.length == 3) {
+                    start = Integer.parseInt(args[0]);
+                    stop = Integer.parseInt(args[1]);
+                    step = Integer.parseInt(args[2]);
+                } else {
+                    return null;
+                }
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+
+            if (step == 0) {
+                return null;
+            }
+
+            String conditionOp = step > 0 ? "<" : ">";
+
+            String update = step == 1
+                    ? variable + "++"
+                    : step == -1
+                    ? variable + "--"
+                    : variable + (step > 0 ? " += " : " -= ")
+                    + Math.abs(step);
+
+            declaredVariables.add(variable);
+
+            return "for (int " + variable + " = " + start + "; "
+                    + variable + " " + conditionOp + " " + stop + "; "
+                    + update + ") {";
+        }
+
+        // Python input assignment.
+        Matcher input = Pattern.compile(
+                "^(" + ID + ")\\s*=\\s*(?:(int|float|str)\\s*\\()?input\\(\\)\\)?$"
+        ).matcher(line);
+
+        if (input.matches() && source.equals("python")) {
+            String name = input.group(1);
+            String type = input.group(2);
+
+            if (target.equals("java")) {
+                if ("int".equals(type)) {
+                    declaredVariables.add(name);
+                    return "int " + name + " = scanner.nextInt();";
+                }
+
+                if ("float".equals(type)) {
+                    declaredVariables.add(name);
+                    return "double " + name + " = scanner.nextDouble();";
+                }
+
+                declaredVariables.add(name);
+                return "String " + name + " = scanner.nextLine();";
+            }
+
+            if (target.equals("cpp")) {
+                String cppType = "int".equals(type)
+                        ? "int"
+                        : "float".equals(type) ? "double" : "string";
+
+                declaredVariables.add(name);
+                return cppType + " " + name + "; cin >> " + name + ";";
+            }
+
+            if (target.equals("c")) {
+                if ("int".equals(type)) {
+                    declaredVariables.add(name);
+                    return "int " + name + "; scanf(\"%d\", &" + name + ");";
+                }
+
+                if ("float".equals(type)) {
+                    declaredVariables.add(name);
+                    return "double " + name + "; scanf(\"%lf\", &" + name + ");";
+                }
+
+                return null;
+            }
+        }
+
+        // Java Scanner input -> Python.
+        Matcher scanner = Pattern.compile(
+                "^(?:int|double|float|long|String|char)\\s+(" + ID + ")\\s*=\\s*"
+                        + ID + "\\.(nextInt|nextDouble|nextFloat|nextLine|next)\\(\\)\\s*;?$"
+        ).matcher(line);
+
+        if (scanner.matches() && source.equals("java")
+                && target.equals("python")) {
+
+            String name = scanner.group(1);
+            String method = scanner.group(2);
+
+            if (method.equals("nextInt")) {
+                return name + " = int(input())";
+            }
+
+            if (method.equals("nextDouble") || method.equals("nextFloat")) {
+                return name + " = float(input())";
+            }
+
+            return name + " = input()";
+        }
+
+        // Output.
+        String outputValue = printValue(line, source);
+
+        if (outputValue != null) {
+            if (outputValue.startsWith("[") || outputValue.startsWith("{")) {
+                return null;
+            }
+
+            // FIX: print(True) -> System.out.println(true).
+            outputValue = normalizeBooleanLiteral(outputValue, source, target);
+
+            if (source.equals("c")) {
+                Matcher formatted = Pattern.compile(
+                        "^\"%[dlfcs]\\\\n?\",\\s*&?(" + ID + ")$"
+                ).matcher(outputValue);
+
+                if (formatted.matches()) {
+                    outputValue = formatted.group(1);
+                } else if (outputValue.startsWith("\"")
+                        && outputValue.endsWith("\"")) {
+                    // Plain C string literal.
+                } else if (outputValue.contains(",")) {
+                    return null;
+                }
+            }
+
+            if (target.equals("python")) {
+                return "print(" + outputValue + ")";
+            }
+
+            if (target.equals("java")) {
+                return "System.out.println(" + outputValue + ");";
+            }
+
+            if (target.equals("cpp")) {
+                return "cout << " + outputValue + " << endl;";
+            }
+
+            if (target.equals("c")) {
+                return cPrint(outputValue);
+            }
+        }
+
+        // Python numeric list -> array/vector.
+        Matcher pyArray = Pattern.compile(
+                "^(" + ID + ")\\s*=\\s*\\[([^\\[\\]]*)\\]$"
+        ).matcher(line);
+
+        if (pyArray.matches() && source.equals("python")) {
+            String name = pyArray.group(1);
+            String values = pyArray.group(2).trim();
+
+            if (!values.isEmpty()
+                    && !values.matches("-?\\d+(\\s*,\\s*-?\\d+)*")) {
+                return null;
+            }
+
+            if (target.equals("python")) {
+                return line;
+            }
+
+            if (target.equals("java")) {
+                declaredVariables.add(name);
+                return "int[] " + name + " = {" + values + "};";
+            }
+
+            if (target.equals("cpp")) {
+                declaredVariables.add(name);
+                return "vector<int> " + name + " = {" + values + "};";
+            }
+
+            if (target.equals("c")) {
+                declaredVariables.add(name);
+                return "int " + name + "[] = {" + values + "};";
+            }
+        }
+
+        // Brace-style array literal -> Python or C-family.
+        Matcher braceArray = Pattern.compile(
+                "^(?:(int|double|float|char|String|string)\\s*(?:\\[\\s*\\])?\\s+)?"
+                        + "(" + ID + ")\\s*=\\s*\\{([^{}]*)}\\s*;?$"
+        ).matcher(line);
+
+        if (braceArray.matches()) {
+            String type = braceArray.group(1);
+            String name = braceArray.group(2);
+            String values = braceArray.group(3).trim();
+
+            if (target.equals("python")) {
+                return name + " = [" + values + "]";
+            }
+
+            String normalizedType = type == null ? "int" : normalizeType(type);
+
+            if (target.equals("java")) {
+                declaredVariables.add(name);
+                return normalizedType + "[] " + name + " = {" + values + "};";
+            }
+
+            if (target.equals("cpp")) {
+                String cppType = normalizedType.equals("String")
+                        ? "string" : normalizedType;
+
+                declaredVariables.add(name);
+                return "vector<" + cppType + "> " + name
+                        + " = {" + values + "};";
+            }
+
+            if (target.equals("c")) {
+                declaredVariables.add(name);
+                return normalizedType + " " + name + "[] = {" + values + "};";
+            }
+        }
+
+        // Typed variable declarations.
+        Matcher declaration = DECLARATION.matcher(line);
+
+        if (declaration.matches()) {
+            String type = normalizeType(declaration.group(1));
+            String name = declaration.group(2);
+            String declarationValue =
+                    removeSemicolon(declaration.group(3).trim());
+
+            if (declarationValue.contains("[")
+                    || declarationValue.contains("{")) {
+                return null;
+            }
+
+            declarationValue = normalizeBooleanLiteral(
+                    declarationValue, source, target);
+
+            if (target.equals("python")) {
+                return name + " = " + declarationValue;
+            }
+
+            if (target.equals("java")) {
+                declaredVariables.add(name);
+                return (type.equals("string") ? "String" : type)
+                        + " " + name + " = " + declarationValue + ";";
+            }
+
+            if (target.equals("cpp")) {
+                declaredVariables.add(name);
+                return (type.equals("String") ? "string"
+                        : type.equals("boolean") ? "bool" : type)
+                        + " " + name + " = " + declarationValue + ";";
+            }
+
+            if (target.equals("c")) {
+                declaredVariables.add(name);
+                return (type.equals("String") ? "char*"
+                        : type.equals("boolean") ? "int" : type)
+                        + " " + name + " = " + declarationValue + ";";
+            }
+        }
+
+        
+        // Java/C/C++ assignment -> Python assignment.
+        Matcher assignmentToPython = Pattern.compile(
+                "^(" + ID + ")\\s*=\\s*(.+)$"
+        ).matcher(line);
+
+        if (assignmentToPython.matches()
+                && target.equals("python")
+                && !source.equals("python")) {
+
+            String name = assignmentToPython.group(1);
+            String value = removeSemicolon(
+                    assignmentToPython.group(2).trim());
+
+            if (value.isEmpty()
+                    || value.contains("{")
+                    || value.contains("}")) {
+                return null;
+            }
+
+            value = normalizeBooleanLiteral(value, source, target);
+            return name + " = " + value;
+        }
+
+
+        // Simple Python assignments with declaration tracking.
+        Matcher assignment = Pattern.compile(
+                "^(" + ID + ")\\s*=\\s*(.+)$"
+        ).matcher(line);
+
+        if (assignment.matches() && source.equals("python")) {
+            String name = assignment.group(1);
+            String assignmentValue = assignment.group(2).trim();
+
+            if (assignmentValue.startsWith("[")
+                    || assignmentValue.startsWith("{")) {
+                return null;
+            }
+
+            if (target.equals("python")) {
+                return line;
+            }
+
+            // FIX: Translate standalone True/False before type inference.
+            assignmentValue = normalizeBooleanLiteral(
+                    assignmentValue, source, target);
+
+            if (declaredVariables.contains(name)) {
+                return name + " = " + assignmentValue + ";";
+            }
+
+            String type = inferType(assignmentValue);
+            String translated;
+
+            if (target.equals("java")) {
+                translated = type + " " + name + " = "
+                        + assignmentValue + ";";
+            } else if (target.equals("cpp")) {
+                translated = (type.equals("String") ? "string"
+                        : type.equals("boolean") ? "bool" : type)
+                        + " " + name + " = " + assignmentValue + ";";
+            } else if (target.equals("c")) {
+                translated = (type.equals("String") ? "char*"
+                        : type.equals("boolean") ? "int" : type)
+                        + " " + name + " = " + assignmentValue + ";";
+            } else {
+                return null;
+            }
+
+            declaredVariables.add(name);
+            return translated;
+        }
+
+        // Increment/decrement.
+        Matcher inc = Pattern.compile(
+                "^(" + ID + ")(\\+\\+|--);?$"
+        ).matcher(line);
+
+        if (inc.matches()) {
+            if (target.equals("python")) {
+                return inc.group(1)
+                        + (inc.group(2).equals("++") ? " += 1" : " -= 1");
+            }
+
+            return inc.group(1) + inc.group(2) + ";";
+        }
+
+        // Compound assignments.
+        Matcher compound = Pattern.compile(
+                "^(" + ID + ")\\s*(\\+=|-=)\\s*(.+?);?$"
+        ).matcher(line);
+
+        if (compound.matches()) {
+            String value = removeSemicolon(compound.group(3).trim());
+            value = normalizeBooleanLiteral(value, source, target);
+
+            return compound.group(1) + " " + compound.group(2) + " "
+                    + value + (target.equals("python") ? "" : ";");
+        }
+
+        return null;
+    }
+
+    /*
+     * FIX: Convert standalone Python boolean literals when targeting
+     * a language that uses lowercase boolean literals, such as Java.
+     *
+     * Exact-token matching avoids changing strings such as "True".
+     */
+    private String normalizeBooleanLiteral(
+            String expression, String source, String target) {
+
+        String value = expression.trim();
+
+        if (source.equals("python") && !target.equals("python")) {
+            if (value.equals("True")) {
+                return "true";
+            }
+
+            if (value.equals("False")) {
+                return "false";
+            }
+        }
+
+        if (!source.equals("python") && target.equals("python")) {
+            if (value.equals("true")) {
+                return "True";
+            }
+
+            if (value.equals("false")) {
+                return "False";
+            }
+        }
+
+        return expression;
+    }
+
+    private String printValue(String line, String source) {
+        String regex;
+
+        switch (source) {
+            case "python":
+                regex = "^print\\s*\\((.*)\\)\\s*;?$";
+                break;
+
+            case "java":
+                regex = "^System\\.out\\.println\\s*\\((.*)\\)\\s*;?$";
+                break;
+
+            case "c":
+                regex = "^printf\\s*\\((.*)\\)\\s*;?$";
+                break;
+
+            case "cpp":
+                Matcher cout = Pattern.compile(
+                        "^cout\\s*<<\\s*(.*?)\\s*(?:<<\\s*endl)?\\s*;?$"
+                ).matcher(line);
+
+                return cout.matches() ? cout.group(1).trim() : null;
+
+            default:
+                return null;
+        }
+
+        Matcher matcher = Pattern.compile(regex).matcher(line);
+        return matcher.matches() ? matcher.group(1).trim() : null;
+    }
+
+    private String cPrint(String value) {
+        String v = value.trim();
+
+        if (v.startsWith("\"") && v.endsWith("\"")) {
+            return "printf(" + v + ");";
+        }
+
+        String type = inferType(v);
+
+        String format = type.equals("String") ? "%s"
+                : type.equals("char") ? "%c"
+                : type.equals("double") ? "%f" : "%d";
+
+        return "printf(\"" + format + "\\n\", " + v + ");";
+    }
+
+    private String forToPython(Matcher m) {
+        String variable = m.group(1);
+        int start = Integer.parseInt(m.group(2));
+        String op = m.group(3);
+        int limit = Integer.parseInt(m.group(4));
+        String update = m.group(5).replaceAll("\\s+", "");
+
+        int step;
+
+        if (update.equals("++")) {
+            step = 1;
+        } else if (update.equals("--")) {
+            step = -1;
+        } else if (update.startsWith("+=")) {
+            step = Integer.parseInt(update.substring(2));
+        } else {
+            step = -Integer.parseInt(update.substring(2));
+        }
+
+        if (step == 0) {
+            return null;
+        }
+
+        if ((op.equals("<") || op.equals("<=")) && step < 0) {
+            return null;
+        }
+
+        if ((op.equals(">") || op.equals(">=")) && step > 0) {
+            return null;
+        }
+
+        int stop = limit;
+
+        if (op.equals("<=")) {
+            stop++;
+        }
+
+        if (op.equals(">=")) {
+            stop--;
+        }
+
+        return "for " + variable + " in range("
+                + start + ", " + stop + ", " + step + "):";
+    }
+
+    private String parametersToPython(String parameters) {
+        if (parameters.trim().isEmpty()) {
+            return "";
+        }
+
+        List<String> names = new ArrayList<>();
+
+        for (String parameter : parameters.split(",")) {
+            Matcher p = Pattern.compile(
+                    "^(?:(?:final)\\s+)?(?:int|double|float|long|short|byte|boolean|bool|char|String|string)\\s+("
+                            + ID + ")$"
+            ).matcher(parameter.trim());
+
+            if (!p.matches()) {
+                return null;
+            }
+
+            names.add(p.group(1));
+        }
+
+        return String.join(", ", names);
+    }
+
+    private String parametersFromPython(String parameters) {
+        if (parameters.trim().isEmpty()) {
+            return "";
+        }
+
+        List<String> names = new ArrayList<>();
+
+        for (String parameter : parameters.split(",")) {
+            String name = parameter.trim();
+
+            if (!name.matches(ID)) {
+                return null;
+            }
+
+            names.add("int " + name);
+        }
+
+        return String.join(", ", names);
+    }
+
+    private String conditionText(String expression, String target) {
+        String result = expression.trim();
+
+        if (target.equals("python")) {
+            return result.replace("&&", " and ")
+                    .replace("||", " or ")
+                    .replaceAll("!\\s*(?!=)", "not ")
+                    .replaceAll("\\btrue\\b", "True")
+                    .replaceAll("\\bfalse\\b", "False");
+        }
+
+        return result.replaceAll("\\bTrue\\b", "true")
+                .replaceAll("\\bFalse\\b", "false")
+                .replaceAll("\\band\\b", "&&")
+                .replaceAll("\\bor\\b", "||");
+    }
+
+    private boolean startsBlock(String line, String target) {
+        if (target.equals("python")) {
+            return line.matches("^(if|elif|else|while|for|def)\\b.*:$");
+        }
+
+        return line.endsWith("{");
+    }
+
+    private int leadingSpaces(String line) {
+        int count = 0;
+
+        while (count < line.length()
+                && (line.charAt(count) == ' '
+                || line.charAt(count) == '\t')) {
+            count += line.charAt(count) == '\t' ? 4 : 1;
+        }
+
+        return count;
+    }
+
+    private boolean isElse(String line) {
+        return line.equals("else:");
+    }
+
+    private boolean isElif(String line) {
+        return line.startsWith("elif ") && line.endsWith(":");
+    }
+
+    private String indent(String target, int depth) {
+        return target.equals("python")
+                ? "    ".repeat(Math.max(0, depth))
+                : "";
+    }
+
+    private String normalize(String language) {
+        String normalized = language.trim().toLowerCase(Locale.ROOT);
+
+        return normalized.equals("c++") || normalized.equals("cpp")
+                ? "cpp" : normalized;
+    }
+
+    private String display(String language) {
+        return language.equals("cpp") ? "c++" : language;
+    }
+
+    private String normalizeType(String type) {
+        if (type.equals("bool")) {
+            return "boolean";
+        }
+
+        if (type.equals("string")) {
+            return "String";
+        }
+
+        return type;
+    }
+
+    private String inferType(String value) {
+        String v = value.trim();
+
+        if (v.equals("true") || v.equals("false")
+                || v.equals("True") || v.equals("False")) {
+            return "boolean";
+        }
+
+        if (v.startsWith("\"") && v.endsWith("\"")) {
+            return "String";
+        }
+
+        if (v.startsWith("'") && v.endsWith("'")) {
+            return "char";
+        }
+
+        if (v.matches("-?\\d+")) {
+            return "int";
+        }
+
+        if (v.matches("-?\\d+\\.\\d+")) {
+            return "double";
+        }
+
+        return "int";
+    }
+
+    private String removeSemicolon(String value) {
+        return value.endsWith(";")
+                ? value.substring(0, value.length() - 1).trim()
+                : value;
+    }
+
+    private String explain(String original, String translated, int line) {
+        String kind = original.startsWith("if") || original.startsWith("else")
+                ? "Conditional syntax"
+                : original.startsWith("for") || original.startsWith("while")
+                ? "Loop syntax"
+                : original.startsWith("def ")
+                ? "Function syntax"
+                : original.startsWith("return")
+                ? "Return syntax"
+                : original.startsWith("print") || original.startsWith("cout")
+                || original.startsWith("printf") || original.startsWith("System.out")
+                ? "Output syntax"
+                : "Statement syntax";
+
+        return "Line " + line + ": " + kind
+                + " was adapted. Original: " + original
+                + " | Translated: " + translated;
+    }
+}
